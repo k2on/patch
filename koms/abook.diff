@@ -1,0 +1,200 @@
+From 2c929698512864798c55fc2da1ccdb449cd1065f Mon Sep 17 00:00:00 2001
+From: Max Koon <max@koon.dev>
+Date: Sun, 15 May 2022 13:33:10 -0400
+Subject: [PATCH] feat: add abook contacts
+
+---
+ contacts_abook.go      | 91 ++++++++++++++++++++++++++++++++++++++++++
+ contacts_abook_test.go | 61 ++++++++++++++++++++++++++++
+ mock-addressbook       | 11 +++++
+ 3 files changed, 163 insertions(+)
+ create mode 100644 contacts_abook.go
+ create mode 100644 contacts_abook_test.go
+ create mode 100644 mock-addressbook
+
+diff --git a/contacts_abook.go b/contacts_abook.go
+new file mode 100644
+index 0000000..9cbba37
+--- /dev/null
++++ b/contacts_abook.go
+@@ -0,0 +1,91 @@
++package main
++
++import (
++	"errors"
++	"os"
++	"strings"
++)
++
++type ABookFormat map[string]map[string]string
++
++type contactsABook struct {
++	parsed ABookFormat
++}
++
++func NewContactsABook(path string) (Contacts, error) {
++	file, err := os.ReadFile(path)
++	if err != nil { return nil, err }
++
++	content := string(file)
++	parsed := ParseABookFormat(content)
++
++	return &contactsABook{ parsed }, nil
++}
++
++func ParseABookFormat(content string) ABookFormat {
++	lines := Lines(content)
++
++	var id string
++	result := make(ABookFormat)
++	for _, line := range(lines) {
++		isEmpty := line == ""
++		if isEmpty { continue }
++
++		isComment := line[0] == '#'
++		if isComment { continue }
++
++		isNewId := line[0] == '['
++		if isNewId {
++			id = Between(line, "[", "]")
++			result[id] = make(map[string]string)
++			continue
++		}
++
++		lineParts := strings.Split(line, "=")
++		key := lineParts[0]
++		val := lineParts[1]
++
++		result[id][key] = val
++	}
++
++	return result
++}
++
++func (contacts *contactsABook) GetIdMap() (IdMap, error) {
++	idMap := make(map[string]string)
++	for id, attrs := range contacts.parsed {
++
++		addIfExists := func (attr string) {
++			val, exists := attrs[attr]
++			if !exists { return }
++			idMap[val] = id
++		}
++
++		addIfExists("email")
++		addIfExists("mobile")
++	}
++	return idMap, nil
++}
++
++func (contacts *contactsABook) GetContact(id string) (Contact, error) {
++	for contactId, attrs := range contacts.parsed {
++		if contactId != id { continue }
++
++		var name string
++		var tags []string
++
++		name = attrs["name"]
++		groups, hasGroups := attrs["groups"]
++		if hasGroups {
++			tags = strings.Split(groups, ",")
++		}
++
++		contact := Contact{
++			id,
++			name,
++			tags,
++		}
++		return contact, nil
++	}
++	return Contact{}, errors.New("unknown contact")
++}
+diff --git a/contacts_abook_test.go b/contacts_abook_test.go
+new file mode 100644
+index 0000000..a36dc3d
+--- /dev/null
++++ b/contacts_abook_test.go
+@@ -0,0 +1,61 @@
++package main
++
++import (
++	"testing"
++
++	"github.com/stretchr/testify/assert"
++)
++
++const PATH = "mock-addressbook"
++
++func TestContactsABook(t *testing.T) {
++	contacts, err := NewContactsABook(PATH)
++	assert.NoError(t, err)
++	assert.NotEqual(t, contacts, nil)
++}
++
++func TestContactsABookIdMap(t *testing.T) {
++	contacts, _ := NewContactsABook(PATH)
++
++	idMap, err := contacts.GetIdMap()
++	assert.NoError(t, err)
++
++	testIds := []string{"+18005559999", "john@example.com"}
++
++	for _, testId := range testIds {
++		id, exists := idMap[testId]
++		assert.True(t, exists)
++		assert.Equal(t, id, "0")
++	}
++}
++
++func TestContactsABookGetContact(t *testing.T) {
++	contacts, _ := NewContactsABook(PATH)
++
++	contact, err := contacts.GetContact("0")
++	assert.NoError(t, err)
++
++	assert.Equal(t, contact.id, "0")
++	assert.Equal(t, contact.name, "John Woods")
++	assert.Equal(t, contact.tags, []string{"dr"})
++}
++
++func TestParseABookFormat(t *testing.T) {
++	content :=
++			"# abook addressbook file\n\n" +
++			"[format]\n" +
++			"program=abook\n" +
++			"version=0.6.1\n\n" +
++			"[0]\n" +
++			"name=joe\n" +
++			"mobile=mama\n\n"
++	res := ParseABookFormat(content)
++
++	format := res["format"]
++	assert.Equal(t, format["program"], "abook")
++	assert.Equal(t, format["version"], "0.6.1")
++
++	joe := res["0"]
++	assert.Equal(t, joe["name"], "joe")
++	assert.Equal(t, joe["mobile"], "mama")
++}
+\ No newline at end of file
+diff --git a/mock-addressbook b/mock-addressbook
+new file mode 100644
+index 0000000..ea2e0c6
+--- /dev/null
++++ b/mock-addressbook
+@@ -0,0 +1,11 @@
++# abook address book format
++
++[format]
++program=abook
++version=0.6.1
++
++[0]
++name=John Woods
++mobile=+18005559999
++email=john@example.com
++groups=dr
+\ No newline at end of file
+-- 
+2.32.0 (Apple Git-132)
+

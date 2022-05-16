@@ -1,0 +1,67 @@
+From bf7889c00079a3a429813a2379ff373296335d03 Mon Sep 17 00:00:00 2001
+From: Max Koon <max@koon.dev>
+Date: Sun, 15 May 2022 17:53:10 -0400
+Subject: [PATCH] feat: add jumps to ui
+
+---
+ ui_messages.go | 29 +++++++++++++++++++++++++++--
+ 1 file changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/ui_messages.go b/ui_messages.go
+index 2dc658f..f58fe35 100644
+--- a/ui_messages.go
++++ b/ui_messages.go
+@@ -1,6 +1,10 @@
+ package main
+ 
+ import (
++	"math"
++	"strconv"
++	"strings"
++
+ 	"github.com/rivo/tview"
+ )
+ 
+@@ -26,16 +30,37 @@ func MakeMessagesUpdateFn(client Client, messages MessagesComponent) UpdateState
+ 		if !exists { return }
+ 
+ 		conversation := GetStateConversation(state)
+-		for _, message := range conversationMessages {
++		messagePos := GetStateMessagePos(state)
++		JumpNumb := MakeMessageJumpNumbFn(len(conversationMessages), messagePos)
++
++		for i, message := range conversationMessages {
+ 			parsedMessage := ParseMessage(client, conversation, message)
++			jumpNumb := "[grey]" + JumpNumb(i) + "[-] "
++			parsedMessage = jumpNumb + parsedMessage
+ 			messages.AddItem(parsedMessage, "", 0, nil)
+ 		}
+ 
+-		messagePos := GetStateMessagePos(state)
+ 		messages.SetCurrentItem(messagePos)
+ 	}
+ }
+ 
++func MakeMessageJumpNumbFn(msgLen int, selectedPos int) func(int) string {
++	PlaceValues := func(i int) int { return int(math.Log10(float64(i))) + 1 }
++	Pad := func(len int) string { return strings.Repeat(" ", len) }
++
++	placeValuesMax := PlaceValues(msgLen)
++
++	return func(i int) string {
++		distance := int(math.Abs(float64(i - selectedPos)))
++		if distance == 0 { return Pad(placeValuesMax) }
++
++		placeValues := PlaceValues(distance)
++		padding := placeValuesMax - placeValues
++		paddingStr := Pad(padding)
++		return paddingStr + strconv.Itoa(distance)
++	}
++}
++
+ func AddContainerMessages(container *tview.Grid, messages *tview.List) {
+ 	isFocused := true
+ 	container.AddItem(
+-- 
+2.32.0 (Apple Git-132)
+
